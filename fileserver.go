@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/akamensky/argparse"
 	"github.com/gin-gonic/gin"
+	"github.com/sunshineplan/imgconv"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -91,15 +92,50 @@ func main() {
 				cacheData := make(map[string]interface{})
 				cacheData["entries"] = responseFiles
 				encodedCacheData, _ := json.Marshal(cacheData)
-				
+
 				ioutil.WriteFile(cachedFilePath, encodedCacheData, 0666)
 
 				c.JSON(200, gin.H{
 					"entries": responseFiles,
 				})
-
 			}
 		} else {
+			extension := filepath.Ext(fullPath)
+			fullPathBackup := fullPath
+
+			// generate jpg if png or gif exists instead
+			if extension == ".jpg" {
+				if !fileExists(fullPath) {
+					pathNoExtension := strings.TrimSuffix(fullPath, extension)
+					if filepath.Base(pathNoExtension) == "cover" {
+						pathNoExtension = filepath.Dir(pathNoExtension) + "/1"
+					}
+
+					if fileExists(pathNoExtension + ".png") {
+						src, _ := imgconv.Open(pathNoExtension + ".png")
+						fullPath = pathNoExtension + ".jpg"
+						imgconv.Save(fullPath, src, imgconv.FormatOption{Format: imgconv.JPEG})
+					}
+
+					if fileExists(pathNoExtension + ".gif") {
+						src, _ := imgconv.Open(pathNoExtension + ".gif")
+						fullPath = pathNoExtension + ".jpg"
+						imgconv.Save(fullPath, src, imgconv.FormatOption{Format: imgconv.JPEG})
+					}
+
+					if filepath.Base(fullPathBackup) == "cover.jpg" {
+						firstImage := filepath.Dir(fullPathBackup) + "/1.jpg"
+						if fileExists(firstImage) {
+							src, _ := imgconv.Open(firstImage)
+
+							dst := imgconv.Resize(src, imgconv.ResizeOption{Width: 320})
+							imgconv.Save(fullPathBackup, dst, imgconv.FormatOption{Format: imgconv.JPEG})
+							fullPath = fullPathBackup
+						}
+					}
+				}
+			}
+
 			c.File(fullPath)
 		}
 	})
