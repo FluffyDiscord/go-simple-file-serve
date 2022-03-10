@@ -1,1 +1,1 @@
-go build -tags="jsoniter nomsgpack"
+go build -ldflags "-X 'main.allowedIp=YOUR_IP_ADDRESS'" -tags="jsoniter nomsgpack" fileserver.go

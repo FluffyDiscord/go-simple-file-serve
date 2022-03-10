@@ -15,6 +15,8 @@ import (
 	"strings"
 )
 
+var allowedIp string
+
 func getCurrentDir() string {
 	ex, err := os.Executable()
 	if err != nil {
@@ -67,6 +69,11 @@ func main() {
 
 	r := gin.Default()
 	r.GET("/*path", func(c *gin.Context) {
+		if c.ClientIP() != allowedIp {
+			c.Status(403)
+			return
+		}
+
 		path := c.Param("path")
 
 		fullPath := fmt.Sprintf("%s/%s", *basePath, path)

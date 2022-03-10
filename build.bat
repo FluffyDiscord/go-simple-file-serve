@@ -1,1 +1,0 @@
-go build -tags="jsoniter nomsgpack"
