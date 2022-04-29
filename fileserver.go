@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"github.com/akamensky/argparse"
 	"github.com/gin-gonic/gin"
-	"github.com/sunshineplan/imgconv"
+	"gopkg.in/gographics/imagick.v2/imagick"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -61,7 +61,46 @@ func fileExists(pathName string) bool {
 	return !errors.Is(err, os.ErrNotExist)
 }
 
+func isImage(lookup string) bool {
+	switch lookup {
+	case
+		".jpeg",
+		".png",
+		".webp",
+		".jpg",
+		".gif",
+		".avif":
+		return true
+	}
+	return false
+}
+
+func getSourceImageForCover(lookup string) string {
+	if fileExists(lookup + "/1.jpg") {
+		return lookup + "/1.jpg"
+	}
+	if fileExists(lookup + "/1.jpeg") {
+		return lookup + "/1.jpeg"
+	}
+	if fileExists(lookup + "/1.png") {
+		return lookup + "/1.png"
+	}
+	if fileExists(lookup + "/1.avif") {
+		return lookup + "/1.avif"
+	}
+	if fileExists(lookup + "/1.gif") {
+		return lookup + "/1.gif"
+	}
+	if fileExists(lookup + "/1.webp") {
+		return lookup + "/1.webp"
+	}
+	return lookup
+}
+
 func main() {
+	imagick.Initialize()
+	defer imagick.Terminate()
+
 	port, basePath := getParams()
 
 	cachePath := "./cache/"
@@ -108,41 +147,51 @@ func main() {
 			}
 		} else {
 			extension := filepath.Ext(fullPath)
-			fullPathBackup := fullPath
 
-			// generate jpg if png or gif exists instead
-			if extension == ".jpg" {
-				if !fileExists(fullPath) {
-					pathNoExtension := strings.TrimSuffix(fullPath, extension)
-					if filepath.Base(pathNoExtension) == "cover" {
-						pathNoExtension = filepath.Dir(pathNoExtension) + "/1"
-					}
+			if isImage(extension) {
+				pathNoExtension := strings.TrimSuffix(fullPath, extension)
 
-					if fileExists(pathNoExtension + ".png") {
-						src, _ := imgconv.Open(pathNoExtension + ".png")
-						fullPath = pathNoExtension + ".jpg"
-						imgconv.Save(fullPath, src, imgconv.FormatOption{Format: imgconv.JPEG})
-					}
+				isCover := filepath.Base(pathNoExtension) == "cover"
+				if isCover {
+					coverPathName := filepath.Dir(pathNoExtension) + "/cover.jpg"
+					if !fileExists(coverPathName) {
+						sourceImagePath := getSourceImageForCover(filepath.Dir(pathNoExtension))
+						mw := imagick.NewMagickWand()
+						defer mw.Destroy()
 
-					if fileExists(pathNoExtension + ".gif") {
-						src, _ := imgconv.Open(pathNoExtension + ".gif")
-						fullPath = pathNoExtension + ".jpg"
-						imgconv.Save(fullPath, src, imgconv.FormatOption{Format: imgconv.JPEG})
-					}
-
-					if filepath.Base(fullPathBackup) == "cover.jpg" {
-						firstImage := filepath.Dir(fullPathBackup) + "/1.jpg"
-						if fileExists(firstImage) {
-							src, _ := imgconv.Open(firstImage)
-
-							dst := imgconv.Resize(src, imgconv.ResizeOption{Width: 320})
-							imgconv.Save(fullPathBackup, dst, imgconv.FormatOption{Format: imgconv.JPEG})
-							fullPath = fullPathBackup
+						err := mw.ReadImage(sourceImagePath)
+						if err != nil {
+							c.File(sourceImagePath)
+							return
 						}
+
+						width, height, err := mw.GetSize()
+						if err != nil {
+							return
+						}
+
+						if width > 320 {
+							scaleRatio := 320 / width
+							width = width * scaleRatio
+							height = height * scaleRatio
+
+							err := mw.ResizeImage(width, height, imagick.FILTER_LANCZOS, -0.1)
+							if err != nil {
+								c.File(sourceImagePath)
+								return
+							}
+						}
+
+						err = mw.WriteImage(coverPathName)
+						if err != nil {
+							c.File(sourceImagePath)
+							return
+						}
+						c.File(coverPathName)
+						return
 					}
 				}
 			}
-
 			c.File(fullPath)
 		}
 	})
